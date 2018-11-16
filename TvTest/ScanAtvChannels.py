@@ -234,7 +234,7 @@ if __name__ == '__main__':
         logging.info('\033[33m{:=<20} {} {:=<20}\033[0m'.format('', loop, ''))
 
         try:
-            TvSource(dsn).scan_atv_channels(135)
+            TvSource(dsn).scan_atv_channels(350)
             TvSource(dsn).check_atv_state()
             loop += 1
         except Exception as err:
