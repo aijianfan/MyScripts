@@ -85,10 +85,8 @@ class TvSource(object):
 
     def tearDown(self):
         logging.info('Terminate Testing')
-        sleep(1)
         logging.info('Recover RC function')
         self.shell_command(self.enableRC)
-        sleep(1)
 
     def adb_command(self, args):
         cmd = "%s %s %s" % ('adb', self.dsn, args)
@@ -192,6 +190,7 @@ class TvSource(object):
         sleep(duration)
 
     def switch_dtv_channel(self,duration):
+        logging.info('Press up to switch channel')
         self.shell_command(self.up)
         sleep(duration)
 
@@ -202,9 +201,9 @@ class TvSource(object):
         try:
             for i in range(10):
                 vfmState = self.shell_command(self.default).strip()
-                #print(vfmState,type(vfmState))
+                print(vfmState,type(vfmState))
 
-                if vfmState >= '3':
+                if vfmState == '3':
                     logging.info('DTV is in playing status')
                     sleep(1)
                     success_count += 1
@@ -247,9 +246,6 @@ if __name__ == '__main__':
         logging.info('{:=<20} {} {:=<20}'.format('', loop, ''))
 
         try:
-            TvSource(dsn).scan_dtv_channels(135)
-            TvSource(dsn).check_dtv_state()
-        except Exception as err:
-            print(err)
+            TvSource(dsn).switch_dtv_channel(5)
         finally:
             loop += 1

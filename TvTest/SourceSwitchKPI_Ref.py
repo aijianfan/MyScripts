@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
 
-import subprocess,sys,signal,os,logging,time,re,datetime
+import subprocess,sys,signal,os,logging,time,re,datetime,argparse
 from time import sleep
+
+parser = argparse.ArgumentParser(description='', prog='PROG')
 
 def send_command(cmd):
     output, error = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()
@@ -71,16 +73,27 @@ class TvSource(object):
             self.dsn = '-s %s' % dsn
         if os.name == 'posix':
             self.forceStop = 'am force-stop com.android.tv >/dev/null 2>&1'
+            self.fullscreen = 'am start -n com.android.tv/.MainActivity >/dev/null 2>&1'
             self.disableRC = "'echo 2 > /sys/class/remote/amremote/protocol'"
             self.enableRC = "'echo 1 > /sys/class/remote/amremote/protocol'"
+            self.default = "'cat /sys/class/vfm/map | grep -w default | grep -o 1 | wc -l'"
+            self.tvpath = "'cat /sys/class/vfm/map | grep -w tvpath | grep -o 1 | wc -l'"
+            self.axis = "'cat /sys/class/video/axis'"
         else:
             self.forceStop = 'am force-stop com.android.tv >nul'
+            self.fullscreen = 'am start - n com.android.tv/.MainActivity >nul'
             self.disableRC = '"echo 2 > /sys/class/remote/amremote/protocol"'
             self.enableRC = '"echo 1 > /sys/class/remote/amremote/protocol"'
+            self.default = '"cat /sys/class/vfm/map | grep -w default | grep -o 1 | wc -l"'
+            self.tvpath = '"cat /sys/class/vfm/map | grep -w tvpath | grep -o 1 | wc -l"'
+            self.axis = '"cat /sys/class/video/axis"'
         self.sourceMenu = 'input keyevent 178'
         self.up = 'input keyevent KEYCODE_DPAD_UP'
         self.down = 'input keyevent KEYCODE_DPAD_DOWN'
         self.enter = 'input keyevent KEYCODE_ENTER'
+        self.channel_up = 'input keyevent 166'
+        self.channel_down = 'input keyevent 167'
+        self.default = '"cat /sys/class/vfm/map | grep -w default | grep -o 1 | wc -l"'
 
     def setUp(self):
         self.root_device()
@@ -89,7 +102,13 @@ class TvSource(object):
         sleep(2)
         logging.info('Disable RC function')
         self.shell_command(self.disableRC)
-        sleep(1)
+        sleep(3)
+        axis = self.shell_command(self.axis).strip()
+        #print('axis:',axis,type(axis))
+        if axis == '180 296 644 556':
+            logging.info('Playing in PIP now, switch to full screen')
+            self.shell_command(self.fullscreen)
+            sleep(8)
 
     def tearDown(self):
         logging.info('Terminate Testing')
@@ -179,20 +198,46 @@ class TvSource(object):
         self.shell_command(self.enter)
         sleep(duration)
 
+    def is_dtv_playing(self):
+        vfmstatus = self.shell_command(self.default).strip()
+        #print('vfmstatus',vfmstatus,type(vfmstatus))
+        if vfmstatus == '3':
+            logging.info('DTV is playing...')
+            return True
+        else:
+            logging.info('DTV is not playing...')
+            return False
+
+    def switch_channel(self, duration):
+        if (loop % 2) == 0:
+            self.shell_command(self.channel_up)
+            logging.info('Press \'Channel +\' and wait for {}s'.format(duration))
+            sleep(duration)
+        else:
+            self.shell_command(self.channel_down)
+            logging.info('Press \'Channel -\' and wait for {}s'.format(duration))
+            sleep(duration)
+
     def capture_logs(self, source1, source2, loop):
-        # 决定通道切换的起点是哪个通道
-        if source1 == 'atv':
+        # 决定通道切换的起点是哪个通道,如果起始通道和目标通道不一样，则开始正常的进入起始通道先，如果起始通道和目标通道一致，则先检查当前播放的是否是准备选择的通道，如果不是，先切过去
+        if source1 == 'atv' and source2 != source1:
             self.test_play_atv(10)
-        elif source1 == 'dtv':
+        elif source1 == 'dtv' and source2 != source1:
             self.test_play_dtv(10)
-        elif source1 == 'hdmi1':
+        elif source1 == 'hdmi1' and source2 != source1:
             self.test_play_hdmi1(10)
-        elif source1 == 'hdmi2':
+        elif source1 == 'hdmi2' and source2 != source1:
             self.test_play_hdmi2(10)
-        elif source1 == 'hdmi3':
+        elif source1 == 'hdmi3' and source2 != source1:
             self.test_play_hdmi3(10)
-        elif source1 == 'avin':
+        elif source1 == 'avin' and source2 != source1:
             self.test_play_cvbs(10)
+        elif source1 == source2 == 'atv':
+            if self.is_dtv_playing():
+                self.test_play_atv(10)
+        elif source1 == source2 == 'dtv':
+            if not self.is_dtv_playing():
+                self.test_play_dtv(10)
 
         currentTime = time.strftime('%Y%m%d_%H%M%S', time.localtime(time.time()))
         logPath = 'Script_logs'
@@ -217,33 +262,45 @@ class TvSource(object):
             out = subprocess.Popen(logCmd, shell=True, stdout=f, stderr=subprocess.PIPE)
             logging.info('Capturing log...')
 
-            if source2 == 'atv':
+            if source2 == 'atv' and source2 != source1:
                 self.test_play_atv(15)
                 pattern1 = re.compile(r'doTuneInService')   # doTuneInService doSetSurface'
                 pattern2 = re.compile(r'show source on screen') # onSigChange4TVIN_SIG_STATUS_STABLE , show source on screen'
-            elif source2 == 'dtv':
+            elif source2 == 'dtv' and source2 != source1:
                 self.test_play_dtv(15)
                 pattern1 = re.compile(r'doTuneInService')   # doTuneInService doSetSurface'
                 pattern2 = re.compile(r'video available ok') # onSigChange4TVIN_SIG_STATUS_STABLE , show source on screen'
-            elif source2 == 'hdmi1':
+            elif source2 == 'hdmi1' and source2 != source1:
                 self.test_play_hdmi1(15)
                 pattern1 = re.compile(r'doSetSurface')   # doTuneInService doSetSurface'
                 pattern2 = re.compile(r'show source on screen') # onSigChange4TVIN_SIG_STATUS_STABLE , show source on screen'
-            elif source2 == 'hdmi2':
+            elif source2 == 'hdmi2' and source2 != source1:
                 self.test_play_hdmi2(15)
                 pattern1 = re.compile(r'doSetSurface')   # doTuneInService doSetSurface'
                 pattern2 = re.compile(r'show source on screen') # onSigChange4TVIN_SIG_STATUS_STABLE , show source on screen'
-            elif source2 == 'hdmi3':
+            elif source2 == 'hdmi3' and source2 != source1:
                 self.test_play_hdmi3(15)
                 pattern1 = re.compile(r'doSetSurface')   # doTuneInService doSetSurface'
                 pattern2 = re.compile(r'show source on screen') # onSigChange4TVIN_SIG_STATUS_STABLE , show source on screen'
-            elif source2 == 'avin':
+            elif source2 == 'avin' and source2 != source1:
                 self.test_play_cvbs(15)
+                pattern1 = re.compile(r'doSetSurface')   # doTuneInService doSetSurface'
+                pattern2 = re.compile(r'show source on screen') # onSigChange4TVIN_SIG_STATUS_STABLE , show source on screen'
+            elif source2 == source1 == 'atv':
+                self.switch_channel(15)
+                pattern1 = re.compile(r'doTuneInService')   # doTuneInService doSetSurface'
+                pattern2 = re.compile(r'show source on screen') # onSigChange4TVIN_SIG_STATUS_STABLE , show source on screen'
+            elif source2 == source1 == 'dtv':
+                self.switch_channel(15)
+                pattern1 = re.compile(r'doTuneInService')   # doTuneInService doSetSurface'
+                pattern2 = re.compile(r'video available ok') # onSigChange4TVIN_SIG_STATUS_STABLE , show source on screen'
 
             out.terminate()  # 结束抓取log
-            logging.info('Finish captured!')
+            #logging.info('Finish captured!')
             sleep(1)
 
+        startDate = None  # 初始化起始时间为None
+        endDate = None  # 初始化结束时间为None
         # 正则匹配log中的关键字来寻找起点和终点的时间
         fp = open(logfile, 'r')  # 打开每一次切换通道后保存的logcat
         while True:
@@ -266,13 +323,13 @@ class TvSource(object):
         # 转化过滤log后的两个时间值，并保存到相应的文件中
         if startDate and endDate:
             distance = endDate - startDate  # 两个时间之间的差值
-            distance = float(str(distance)[5:])  # 转换时间差值为浮点数
+            if distance != 0:
+                distance = float(str(distance)[5:])  # 转换时间差值为浮点数
             logging.info('From {} switch to {}, Cost: < \033[33m{}s\033[0m >'.format(source1, source2, distance))
             with open(file3, 'a+') as s:
                 s.write('{}. {} to {}: {}\n'.format(loop, source1, source2, distance))  # 保存每一次切换的数据到result.log
         else:
-            logging.info('Data captured is failed')
-
+            logging.info('Data captured is failed')  # 起始时间和结束时间两者任一抓取失败则打印failed！
 
 def exit(signum, frame):
     print('You choose to stop me.')
@@ -295,33 +352,39 @@ if __name__ == '__main__':
 
     while True:
 
-        logging.info('\033[33m{:=<20} {} {:=<20}\033[0m'.format('', loop, ''))
+        logging.info('{:=<20} {} {:=<20}'.format('', loop, ''))
 
         try:
 
             #TvSource(dsn).capture_logs('atv','dtv',loop)
+            #TvSource(dsn).capture_logs('atv','avin',loop)
             #TvSource(dsn).capture_logs('atv','hdmi1',loop)
             #TvSource(dsn).capture_logs('atv','hdmi2',loop)
             #TvSource(dsn).capture_logs('atv','hdmi3',loop)
+            #TvSource(dsn).capture_logs('dtv','dtv',loop)
             #TvSource(dsn).capture_logs('dtv','atv',loop)
-            TvSource(dsn).capture_logs('dtv','hdmi1',loop)
-            TvSource(dsn).capture_logs('dtv','hdmi2',loop)
-            TvSource(dsn).capture_logs('dtv','hdmi3',loop)
+            #TvSource(dsn).capture_logs('dtv','avin',loop)
+            #TvSource(dsn).capture_logs('dtv','hdmi1',loop)
+            #TvSource(dsn).capture_logs('dtv','hdmi2',loop)
+            #TvSource(dsn).capture_logs('dtv','hdmi3',loop)
+            #TvSource(dsn).capture_logs('avin','atv',loop)
+            #TvSource(dsn).capture_logs('avin','dtv',loop)
+            #TvSource(dsn).capture_logs('avin','hdmi2',loop)
             #TvSource(dsn).capture_logs('hdmi1','atv',loop)
-            TvSource(dsn).capture_logs('hdmi1','dtv',loop)
+            #TvSource(dsn).capture_logs('hdmi1','dtv',loop)
             TvSource(dsn).capture_logs('hdmi1','hdmi2',loop)
-            TvSource(dsn).capture_logs('hdmi1','hdmi3',loop)
-            #TvSource(dsn).capture_logs('hdmi2','atv',loop)
-            TvSource(dsn).capture_logs('hdmi2','dtv',loop)
+            # TvSource(dsn).capture_logs('hdmi1','hdmi3',loop)
+            # TvSource(dsn).capture_logs('hdmi2','atv',loop)
+            #TvSource(dsn).capture_logs('hdmi2','dtv',loop)
+            #TvSource(dsn).capture_logs('hdmi2','avin',loop)
             TvSource(dsn).capture_logs('hdmi2','hdmi1',loop)
-            TvSource(dsn).capture_logs('hdmi2','hdmi3',loop)
+            #TvSource(dsn).capture_logs('hdmi2','hdmi3',loop)
             #TvSource(dsn).capture_logs('hdmi3','atv',loop)
-            TvSource(dsn).capture_logs('hdmi3','dtv',loop)
-            TvSource(dsn).capture_logs('hdmi3','hdmi1',loop)
-            TvSource(dsn).capture_logs('hdmi3','hdmi2',loop)
-
-            loop += 1
+            #TvSource(dsn).capture_logs('hdmi3','dtv',loop)
+            #TvSource(dsn).capture_logs('hdmi3','hdmi1',loop)
+            #TvSource(dsn).capture_logs('hdmi3','hdmi2',loop)
 
         except Exception as err:
             print(err)
-
+        finally:
+            loop += 1

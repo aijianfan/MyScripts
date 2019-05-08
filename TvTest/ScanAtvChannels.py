@@ -18,24 +18,24 @@ def select_device():
             serial_nos.append(item.decode('utf-8'))
     d = serial_nos
     devlist = {}
-    print('\033[33m{:=>20}\033[0m'.format(''))
+    print('{:=>20}'.format(''))
     for i, device in enumerate(d):
         devlist[(i+1)] = device
-        print('\033[33m{}{:^2}{}\033[0m'.format((i+1),':', device))
-    print('\033[33m{:=>20}\033[0m'.format(''))
-    print('\033[33m{0}[{1}-{2}]\033[0m'.format('Input Range:', 1, len(d)))
+        print('{}{:^2}{}'.format((i+1),':', device))
+    print('{:=>20}'.format(''))
+    print('{0}[{1}-{2}]'.format('Input Range:', 1, len(d)))
     inp = input('Please select device:')
     inp = int(inp)
     for key in devlist.keys():
         if inp in devlist.keys():
             if key == inp:
                 serial_id = devlist[key]
-                print('Your selectiton is:\033[33m[ {} ]\033[0m'.format(serial_id))
+                print('Your selectiton is:[ {} ]'.format(serial_id))
                 return serial_id
             else:
                 continue
         else:
-            raise TypeError('\033[31m{}\033[0m'.format('*** out of range ***'))
+            raise TypeError('{}'.format('*** out of range ***'))
 
 # logging module define
 def logging_init():
@@ -58,11 +58,15 @@ class TvSource(object):
             self.forceStop = 'am force-stop com.android.tv >/dev/null 2>&1'
             self.disableRC = "'echo 2 > /sys/class/remote/amremote/protocol'"
             self.enableRC = "'echo 1 > /sys/class/remote/amremote/protocol'"
+            self.default = "'cat /sys/class/vfm/map | grep -w default | grep -o 1 | wc -l'"
+            self.tvpath = "'cat /sys/class/vfm/map | grep -w tvpath | grep -o 1 | wc -l'"
         else:
             self.sourceMenu = 'am start -n com.droidlogic.tv.settings/.TvSourceActivity >nul'
             self.forceStop = 'am force-stop com.android.tv >nul'
             self.disableRC = '"echo 2 > /sys/class/remote/amremote/protocol"'
             self.enableRC = '"echo 1 > /sys/class/remote/amremote/protocol"'
+            self.default = '"cat /sys/class/vfm/map | grep -w default | grep -o 1 | wc -l"'
+            self.tvpath = '"cat /sys/class/vfm/map | grep -w tvpath | grep -o 1 | wc -l"'
         self.up = 'input keyevent KEYCODE_DPAD_UP'
         self.down = 'input keyevent KEYCODE_DPAD_DOWN'
         self.enter = 'input keyevent KEYCODE_ENTER'
@@ -188,7 +192,7 @@ class TvSource(object):
 
         try:
             for i in range(10):
-                vfmState = self.shell_command("cat /sys/class/vfm/map | grep tvpath | grep -o 1 | wc -l").strip()
+                vfmState = self.shell_command(self.tvpath).strip()
 
                 if vfmState == '3':
                     logging.info('ATV is in playing status')
@@ -231,12 +235,13 @@ if __name__ == '__main__':
 
     while True:
 
-        logging.info('\033[33m{:=<20} {} {:=<20}\033[0m'.format('', loop, ''))
+        logging.info('{:=<20} {} {:=<20}'.format('', loop, ''))
 
         try:
             TvSource(dsn).scan_atv_channels(350)
             TvSource(dsn).check_atv_state()
-            loop += 1
         except Exception as err:
             print(err)
+        finally:
+            loop += 1
 

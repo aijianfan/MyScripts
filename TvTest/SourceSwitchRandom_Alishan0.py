@@ -1,26 +1,21 @@
 # -*- coding: utf-8 -*-
 
-import subprocess,sys,signal,os,logging,random,time
-import argparse,threading
+import subprocess,sys,signal,os,logging,random
+import argparse
 from time import sleep
 
-parser = argparse.ArgumentParser(description='Set TestCases/Set running time/Set test duration for each TestCase', prog='PROG')
-parser.add_argument('-v','--version', action='version', version='%(prog)s V4.0')
+parser = argparse.ArgumentParser(description='Set IP address/Set TestCases/Set running time for each TestCase', prog='PROG')
+parser.add_argument('-v','--version', action='version', version='%(prog)s V3.0')
 parser.add_argument('-s','--source', type=str, nargs='+', help='List all input sources which need to test: atv/dtv/hdmi1/hdmi2/hdmi3/cvbs/local')
 parser.add_argument('-t','--time', type=int, nargs='+', default=10, help='Set test duration for each source')
 parser.add_argument('-l','--loop', type=int, nargs='+', help='Set test duration for each source')
 flag_parser = parser.add_mutually_exclusive_group(required=False)
-flag_parser.add_argument('-r', dest='flag', action='store_false', help='Set the random status, in sequence to implement if [-r] is not exist')
+flag_parser.add_argument('-r', dest='flag', action='store_false')
 parser.set_defaults(flag=True)   # '-r'参数会置flag为False，此时会开始随机切换，默认为非随机切换
 
 args = parser.parse_args()
-random_status = args.flag   # 随机状态
 test_durations = args.time  # 测试时长
-
-if isinstance(test_durations, list):  # 测试时间如果有赋值，则从列表下标获取时间，如果没有测试时间，默认时间为10s
-    duration = test_durations[0]
-elif isinstance(test_durations, int):
-    duration = test_durations
+random_status = args.flag   # 随机状态
 
 if args.source:  # 如果source选项存在，source_lists变量从参数获取，如果source不存在，则source_list变量默认为全部通道
     source_lists = args.source
@@ -31,6 +26,7 @@ if args.loop is not None:  # 循环次数，如果有参数，则循环指定的
     test_cycles = args.loop
 else:
     test_cycles = float("inf")
+    print(test_cycles,type(test_cycles))
 
 def send_command(cmd):
     output, error = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()
@@ -72,22 +68,6 @@ def select_device():
 def logging_init():
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
-    curr_time = time.strftime('%Y%m%d_%H%M%S', time.localtime(time.time()))
-    log_name = 'script_logs/'
-    if not os.path.exists(log_name):
-        os.mkdir(log_name)
-    if os.name == 'posix':
-        p = (os.getcwd(), '/', log_name)
-    else:
-        p = (os.getcwd(), '\\', log_name)
-    log_path = ''.join(p)
-    log_name = (log_path, curr_time, '.log')
-    log_file = ''.join(log_name)
-    file_handler = logging.FileHandler(log_file, mode='w')
-    file_handler.setLevel(level=logging.INFO)
-    formatter1 = logging.Formatter("%(asctime)s - %(filename)s[line:%(lineno)d] - %(module)s - %(levelname)s: %(message)s")
-    file_handler.setFormatter(formatter1)
-    logger.addHandler(file_handler)
     stream_handler = logging.StreamHandler(sys.stdout)
     stream_handler.setLevel(level=logging.INFO)
     formatter2 = logging.Formatter("%(asctime)s - %(levelname)s: %(message)s")
@@ -115,11 +95,18 @@ class TvSource(object):
         self.channel_up = 'input keyevnt 166'
         self.channel_down = 'input keyevnt 167'
         self.home = 'input keyevent KEYCODE_HOME'
-        self.monkey = 'monkey -s 1000 --ignore-crashes --ignore-timeouts --ignore-security-exceptions --pct-trackball 0 --pct-nav 0 --pct-majornav 0 --pct-anyevent 0 -v -v -v --throttle 300 1200000000'
         self.decoder_path = "cat /sys/class/vfm/map | grep vdec-map-0 | grep -o '(1)' | wc -l"
         self.hdmi_path = "cat /sys/class/vfm/map | grep tvpath | grep -o '(1)' | wc -l"
         self.dtv_path = "cat /sys/class/vfm/map | grep default | grep -o '(1)' | wc -l"
-        self.frame_count = "cat /sys/module/amvideo/parameters/display_frame_count"
+        self.hdmi1 = "am start -a android.intent.action.VIEW -n com.amazon.tv.inputpreference.service/com.amazon.tv.inputpreference.player.PassthroughPlayerActivity -d " \
+                     "'tvinput://tunenow?inputId=com.droidlogic.tvinput/.services.Hdmi1InputService/HW5&suppressInputTuneNotification=false&refTag=home_recents' > /dev/null 2>&1"
+        self.hdmi2 = "am start -a android.intent.action.VIEW -n com.amazon.tv.inputpreference.service/com.amazon.tv.inputpreference.player.PassthroughPlayerActivity -d " \
+                     "'tvinput://tunenow?inputId=com.droidlogic.tvinput/.services.Hdmi2InputService/HW5&suppressInputTuneNotification=false&refTag=home_recents' > /dev/null 2>&1"
+        self.hdmi3 = "am start -a android.intent.action.VIEW -n com.amazon.tv.inputpreference.service/com.amazon.tv.inputpreference.player.PassthroughPlayerActivity -d " \
+                     "'tvinput://tunenow?inputId=com.droidlogic.tvinput/.services.Hdmi3InputService/HW5&suppressInputTuneNotification=false&refTag=home_recents' > /dev/null 2>&1"
+        self.livetv = "'am start -n com.amazon.tv.livetv/.TvChannelsPlayerActivity' > /dev/null 2>&1"
+        self.cvbs = "am start -a android.intent.action.VIEW -n com.amazon.tv.inputpreference.service/com.amazon.tv.inputpreference.player.PassthroughPlayerActivity -d " \
+                    "'tvinput://tunenow?inputId=com.droidlogic.tvinput/.services.AV1InputService/HW1&suppressInputTuneNotification=false&refTag=home_recents' > /dev/null 2>&1"
 
     def setUp(self):
         self.root_device()
@@ -134,11 +121,7 @@ class TvSource(object):
         logging.info('Terminate Testing')
         logging.info('Recover RC function')
         self.shell_command(self.enableRC)
-        self.terminate_monkey()
         self.shell_command(self.home)
-
-    def excute_cmd(self, cmd):
-        return subprocess.Popen(cmd, shell=True)
 
     def adb_command(self, args):
         cmd = "%s %s %s" % ('adb', self.dsn, args)
@@ -165,7 +148,6 @@ class TvSource(object):
         self.shell_command(self.enter)
         sleep(duration)
         self.check_path_hdmi()
-        self.check_frame_count(5)
 
     def test_play_dtv(self, duration):
         self.shell_command(self.sourceMenu)
@@ -176,7 +158,6 @@ class TvSource(object):
         self.shell_command(self.enter)
         sleep(duration)
         self.check_path_dtv()
-        self.check_frame_count(5)
 
     def test_play_hdmi1(self, duration):
         self.shell_command(self.sourceMenu)
@@ -189,7 +170,6 @@ class TvSource(object):
         self.shell_command(self.enter)
         sleep(duration)
         self.check_path_hdmi()
-        self.check_frame_count(5)
 
     def test_play_hdmi2(self, duration):
         self.shell_command(self.sourceMenu)
@@ -204,7 +184,6 @@ class TvSource(object):
         self.shell_command(self.enter)
         sleep(duration)
         self.check_path_hdmi()
-        self.check_frame_count(5)
 
     def test_play_hdmi3(self, duration):
         self.shell_command(self.sourceMenu)
@@ -221,7 +200,6 @@ class TvSource(object):
         self.shell_command(self.enter)
         sleep(duration)
         self.check_path_hdmi()
-        self.check_frame_count(5)
 
     def test_play_cvbs(self, duration):
         self.shell_command(self.sourceMenu)
@@ -240,59 +218,42 @@ class TvSource(object):
         self.shell_command(self.enter)
         sleep(duration)
         self.check_path_hdmi()
-        self.check_frame_count(5)
 
     def check_path_local(self):
-        for i in range(3):
-            value1 = self.shell_command(self.decoder_path).strip()
-            value2 = self.shell_command(self.dtv_path).strip()
-            if value1 == '3' or value2 == '3':
-                logging.info('decoder path is in used, value: {}, {}'.format(value1, value2))
+        timer = 0
+        while True:
+            value = self.shell_command(self.decoder_path).strip()
+            if value == '3':
+                timer += 1
+                logging.info('decoder path is in used, value: {}, timer: {}'.format(value, timer))
                 sleep(20)
-            else:
-                logging.info('path has released, value: {}, {}'.format(value1, value2))
+                if timer == 3:
+                    break
+                else:
+                    continue
+            elif value == '0':
+                logging.info('path has released, value: {}'.format(value))
                 break
 
     def check_path_hdmi(self):
         value = self.shell_command(self.hdmi_path).strip()
         if value == '3':
             logging.info('tvpath is in used, value: {}'.format(value))
-            return 3
+            sleep(1)
         elif value == '0':
-            logging.info('path is not created, value: {}'.format(value))
-            return 0
+            logging.info('path has released, value: {}'.format(value))
 
     def check_path_dtv(self):
         value = self.shell_command(self.dtv_path).strip()
         if value == '3':
             logging.info('default path is in used, value: {}'.format(value))
-            return 3
+            sleep(1)
         elif value == '0':
-            logging.info('path is not created, value: {}'.format(value))
-            return 0
-
-    def check_frame_count(self, cycle, count = None):
-        if count is None:
-            count = []
-        for i in range(cycle):
-            frame_status = self.shell_command(self.frame_count).strip()
-            sleep(0.5)
-            count.append(frame_status)
-        for i in range(len(count)):
-            if (i + 1) < len(count):
-                if count[i+1] > count[i] > 0:
-                    logging.info('Frame count is increasing, value: {}'.format(count[i+1]))
-                elif count[i+1] == count[i]:
-                    logging.info('Display is in abnormal status, please check!, value: {}'.format(count[i+1]))
-
-    def terminate_monkey(self):
-        logging.info('Terminate monkey test')
-        monkey_pid = self.shell_command("ps -A | grep monkey | awk '{print $2}'")
-        self.shell_command('kill {}'.format(monkey_pid))
+            logging.info('path has released, value: {}'.format(value))
 
     def test_movieplayer_from_udisk(self, duration):
         logging.info('Start local playback test with Movie Player')
-        vpath = 'SourceStress'
+        vpath = 'Videos'
         movieplayer = 'am start -a android.intent.action.VIEW -n com.droidlogic.videoplayer/.VideoPlayer -d file:'
         output = self.shell_command('ls /storage').strip().split(' ')
         filter = [b'emulated', b'self']
@@ -315,45 +276,23 @@ class TvSource(object):
                 command = movieplayer + video_files[index]
                 logging.info('Play MoviePlayer with Video: {}'.format([video]))
                 self.shell_command(command)
-                sleep(2)
-
-                if self.shell_command(self.decoder_path).strip() != '3':
-                    try:
-                        from uiautomator import Device
-                        d = Device(dsn)
-
-                        if d(text='Allow',resourceId='com.android.packageinstaller:id/permission_allow_button').exists:
-                            logging.info('detect this\'s the first time to play!')
-                            d.press.enter()
-
-                    except Exception as err:
-                        print(err)
-
                 sleep(duration)
-                self.check_path_local()
-                self.check_frame_count(5)
-                self.shell_command(self.home)
-                #self.shell_command('am force-stop com.droidlogic.videoplayer')
+                self.check_path()
                 sleep(1)
-                self.check_path_local()
+                self.shell_command('am force-stop com.droidlogic.videoplayer')
                 sleep(1)
 
     def test_movieplayer_from_local(self, duration):
-        logging.info('Start local playback test with Movie Player...')
+        logging.info('Start local playback test with Movie Player')
         vpath = 'Videos'
+        self.root_device()
         movieplayer = 'am start -a android.intent.action.VIEW -n com.droidlogic.videoplayer/.VideoPlayer -d file:'
         store_path = '/storage/emulated/0/Movies/'
         is_exist = self.shell_command('ls /storage/emulated/0/Movies/').strip().split(' ')
         source_path = os.path.join(os.getcwd(), vpath)
         video_list = os.listdir(source_path)
-        for i in is_exist:
-            if i == '.DS_Store':
-                is_exist.remove(i)
-        for i in video_list:
-            if i == '.DS_Store':
-                video_list.remove(i)
-
         videos = []
+
         if len(is_exist) != 0:
             for video in video_list:
                 if video not in is_exist:
@@ -380,70 +319,14 @@ class TvSource(object):
                 command = movieplayer + video
                 logging.info('Play MoviePlayer with Video: {}'.format([video]))
                 self.shell_command(command)
-                sleep(2)
-
-                if self.shell_command(self.decoder_path).strip() != '3':
-                    try:
-                        from uiautomator import Device
-                        d = Device(dsn)
-
-                        if d(text='Allow',resourceId='com.android.packageinstaller:id/permission_allow_button').exists:
-                            logging.info('detect this\'s the first time to play!')
-                            d.press.enter()
-
-                    except Exception as err:
-                        print(err)
-
                 sleep(duration)
                 self.check_path_local()
-                self.check_frame_count(5)
-                #self.shell_command('am force-stop com.droidlogic.videoplayer')
-                self.shell_command(self.home)
-                logging.info('Terminate playback')
+                sleep(1)
+                self.shell_command('am force-stop com.droidlogic.videoplayer')
                 sleep(1)
                 self.check_path_local()
-                sleep(1)
         else:
             logging.info('Video copy failed, please check!')
-            exit(1)
-
-    def test_install_app(self):
-        logging.info('Start install apps from Apps folder...')
-        apath = 'Apps'
-        source_path = os.path.join(os.getcwd(), apath)
-        apps = os.listdir(source_path)
-
-        apps_group = []
-        for app in apps:
-            if os.path.splitext(app)[1] == '.apk':
-                apps_group.append(os.path.join(source_path,app))
-
-        commands = []
-        for app in apps_group:
-            cmd = 'adb -s {} install -r {} > /dev/null 2>&1'.format(dsn, app)
-            commands.append(cmd)
-
-        threads = []
-        threads_count = len(commands)
-        for i in range(threads_count):
-            t = threading.Thread(target = self.excute_cmd, args = (commands[i],))
-            threads.append(t)
-        for i in range(threads_count):
-            sleep(1)
-            threads[i].start()
-        for i in range(threads_count):
-            threads[i].join()
-
-        for i in apps:
-            logging.info('{} install success'.format(i))
-            sleep(1)
-
-    def test_monkey(self):
-        logging.info('Prepare environment for monkey test')
-        self.test_install_app()
-        logging.info('Monkey is running...')
-        self.shell_command(self.monkey)
-
 
 def exit(signum, frame):
     print('You choose to stop me.')
@@ -452,18 +335,20 @@ def exit(signum, frame):
     sys.exit(1)
 
 def main():
-    global loop, duration
+    global loop
     loop = 1
     running = True
-    source_groups = ['atv','dtv','hdmi1','hdmi2','hdmi3','cvbs','local','monkey']  # 全局source
-    target_source = [i for i in source_groups if i in source_lists]  # 过滤后的source
+    duration = test_durations[0]
+    source_groups = ['atv','dtv','hdmi1','hdmi2','hdmi3','cvbs','local']
+    target_source = [i for i in source_groups if i in source_lists]
+    #print(source_lists, test_durations, random_status, test_cycles, duration)
 
     while running:
         logging.info('{:=<20} {} {:=<20}'.format('', loop, ''))
         if random_status == False:
             random.shuffle(target_source)
-            duration = random.randint(6,20)
-        print('target_source:',target_source, 'test_cycles:', test_cycles, 'duration:', duration, 'random_status:', random_status)
+            duration = random.randint(5,10)
+        print('source_lists:',source_lists, 'test_cycles:', test_cycles, 'duration:', duration, 'random_status:', random_status)
 
         for source in target_source:
             if source == 'atv':
@@ -478,10 +363,8 @@ def main():
                 TvSource(dsn).test_play_hdmi3(duration)
             elif source == 'cvbs':
                 TvSource(dsn).test_play_cvbs(duration)
-            elif source == 'local':
+            else:
                 TvSource(dsn).test_movieplayer_from_local(duration)
-            elif source == 'monkey':
-                TvSource(dsn).test_monkey()
 
         loop += 1
 
